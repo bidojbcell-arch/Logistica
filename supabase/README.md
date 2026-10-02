@@ -1,6 +1,6 @@
 # Preparación de Supabase
 
-1. Inicia sesión con Supabase CLI desde un equipo autorizado y enlaza el proyecto usando su referencia:
+1. Inicia sesión con Supabase CLI desde un equipo autorizado y enlaza el proyecto usando su referencia. Esto aplica la tabla `profiles` que falta y el resto del esquema:
 
    ```sh
    npx supabase login
@@ -8,9 +8,9 @@
    npx supabase db push
    ```
 
-2. Abre `/mensajero/` y registra `bidojbcell@gmail.com` para crear la cuenta inicial. Elige una contraseña propia y segura y confirma el correo si Supabase lo solicita. Los registros públicos siempre empiezan como mensajeros pendientes; el navegador nunca puede asignar el rol de administrador.
+2. La migración crea el perfil de `bidojbcell@gmail.com` como administrador aprobado si esa cuenta ya existía en Supabase Auth. Si todavía no existe, regístrala desde `/mensajero/`; las cuentas nuevas empiezan como mensajeros pendientes, así que luego hay que promover esa cuenta en SQL Editor.
 
-3. En Supabase SQL Editor, promueve esa cuenta inicial a administradora:
+   Para promover manualmente la cuenta inicial cuando se registró después de aplicar la migración, ejecuta en Supabase SQL Editor:
 
    ```sql
    update public.profiles as p
@@ -23,9 +23,9 @@
      and lower(u.email) = lower('bidojbcell@gmail.com');
    ```
 
-4. Entra al panel de administración en `/`. Las nuevas cuentas creadas desde `/mensajero/` aparecerán en “Aprobación de mensajeros” para que las apruebes o rechaces.
+3. Entra al panel de administración en `/`. Las nuevas cuentas creadas desde `/mensajero/` aparecerán en “Aprobación de mensajeros” para que las apruebes o rechaces.
 
-5. En **Authentication → URL Configuration**, agrega a Redirect URLs el origen del sitio desplegado y sus rutas `/` y `/mensajero/`. Los enlaces de confirmación y recuperación regresan al mismo origen donde se solicitaron.
+4. En **Authentication → URL Configuration**, agrega a Redirect URLs el origen del sitio desplegado y sus rutas `/` y `/mensajero/`. Los enlaces de confirmación y recuperación regresan al mismo origen donde se solicitaron.
 
 No se configura una contraseña genérica compartida. Al crear la cuenta inicial, el administrador establece su propia contraseña; después puede cambiarla desde el menú **AM → Cambiar contraseña**, confirmando primero su contraseña actual. Si la olvidó, usa **Olvidé mi contraseña** en el formulario para recibir un enlace de recuperación.
 

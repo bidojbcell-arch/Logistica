@@ -10,12 +10,12 @@
 <body>
   <header class="top"><span class="brand">RutaRD · Perfil del mensajero</span><a href="/">Volver al panel</a></header>
   <main class="wrap">
-    <section class="profile"><div class="person"><div class="avatar">JM</div><div><h1 style="font-size:21px;margin:0">Juan Martínez</h1><p class="muted">Mensajero · Santo Domingo · 3 paradas pendientes</p></div></div><span class="tag">En ruta</span></section>
+    <section class="profile"><div class="person"><div class="avatar" id="courierInitials">··</div><div><h1 id="courierName" style="font-size:21px;margin:0">Mensajero</h1><p class="muted" id="courierSummary">Cargando tus entregas asignadas…</p></div></div><span class="tag" id="courierStatus">Conectando</span></section>
     <div class="grid">
       <section class="card"><h2>Organiza tu ruta</h2><p class="muted">Mueve las paradas o ordénalas por cercanía. El mapa se actualiza con el orden elegido.</p><div class="toolbar"><button class="btn primary" onclick="sortNearest()">Ordenar por cercanía</button><button class="btn" onclick="resetRoute()">Restablecer ruta</button></div><div id="routeStops"></div></section>
-      <section class="card"><h2>Ruta de entregas</h2><p class="muted">A es tu ubicación de salida; los puntos de destino siguen el orden de la lista.</p><div class="map"><iframe id="courierMap" title="Ruta organizada del mensajero" allowfullscreen loading="lazy"></iframe></div><div class="actions" style="margin-top:13px"><a class="btn whatsapp" href="https://wa.me/18095550125?text=Hola%20Mar%C3%ADa%2C%20voy%20hacia%20tu%20direcci%C3%B3n%20con%20el%20pedido%201254." target="_blank" rel="noopener">Escribir a María por WhatsApp</a><a class="btn" href="/seguimiento/1254/" target="_blank" rel="noopener">Abrir seguimiento del cliente</a></div></section>
+      <section class="card"><h2>Ruta de entregas</h2><p class="muted">El mapa muestra tus pedidos activos asignados y su orden de visita.</p><div class="map"><iframe id="courierMap" title="Ruta organizada del mensajero" allowfullscreen loading="lazy"></iframe></div></section>
     </div>
-    <p class="foot">Direcciones, productos y teléfonos de demostración. El orden se recuerda en este navegador.</p>
+    <p class="foot">Tus pedidos asignados se cargan desde RutaRD. El orden de la ruta se recuerda en este dispositivo.</p>
   </main>
 
   <script type="module" src="/src/courier.ts"></script>
