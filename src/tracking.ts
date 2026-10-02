@@ -26,7 +26,7 @@ type TrackingOrder = {
 };
 
 function setTimeline(status: string) {
-  const flow = ['Pendiente', 'Asignado', 'En camino', 'Llegando', 'Entregado'];
+  const flow = ['Pendiente', 'Asignado', 'En ruta', 'De camino al cliente', 'Entregado'];
   const completed = Math.max(0, flow.indexOf(status));
   document.querySelectorAll<HTMLElement>('.timeline li').forEach((item, index) => {
     item.classList.toggle('done', index < completed || status === 'Entregado');
