@@ -22,6 +22,7 @@ shell.innerHTML = `
     .auth-brand{font-size:13px;font-weight:850;letter-spacing:.13em;color:#008b73}.auth-card h1{font-size:27px;margin:10px 0 7px}.auth-card p{color:#62718a;line-height:1.5;margin:0 0 20px}
     .auth-form{display:grid;gap:12px}.auth-form label{display:grid;gap:6px;font-size:13px;font-weight:700}.auth-form input{width:100%;border:1px solid #dbe2ec;border-radius:9px;padding:12px;font:inherit}.auth-form button,.auth-secondary{border:0;border-radius:9px;padding:12px;background:#00b894;color:#06352f;font:inherit;font-weight:800;cursor:pointer}
     .auth-secondary{background:#eef2f8;color:#17243a}.auth-switch{border:0;background:none;color:#2459b7;font:inherit;font-weight:700;cursor:pointer;padding:6px}.auth-error{min-height:20px;color:#a52b3a;font-size:13px}.auth-info{padding:12px;border-radius:9px;background:#e5fbf5;color:#087b67;font-size:14px;line-height:1.5}.auth-top-action{border:1px solid #e5eaf2;background:#fff;color:#17243a;padding:9px 12px;border-radius:8px;cursor:pointer}
+    .account-menu .account-change-password{background:#eef2f8;color:#17243a}.account-password-dialog{width:min(440px,calc(100vw - 32px));border:0;border-radius:16px;padding:24px;box-shadow:0 24px 80px #020d2066;color:#17243a}.account-password-dialog::backdrop{background:#06162e99}.account-password-dialog h2{margin:0 0 7px}.account-password-dialog p{color:#62718a;line-height:1.45}.account-password-form{display:grid;gap:12px}.account-password-form label{display:grid;gap:6px;font-size:13px;font-weight:700}.account-password-form input{border:1px solid #dbe2ec;border-radius:8px;padding:11px;font:inherit}.account-password-actions{display:flex;justify-content:end;gap:8px;margin-top:6px}.account-password-actions button{padding:10px 12px;border:0;border-radius:8px;font-weight:700}.account-password-cancel{background:#eef2f8;color:#17243a}.account-password-submit{background:#00b894;color:#06352f}.account-password-error{min-height:18px;color:#a52b3a;font-size:13px}
     .approval-card{background:#fff;border:1px solid #e5eaf2;border-radius:13px;padding:18px;margin-bottom:14px}.approval-actions{display:flex;gap:8px}.approval-actions button{border:0;border-radius:8px;padding:8px 11px;cursor:pointer;font-weight:700}.approve-btn{background:#00b894;color:#06352f}.reject-btn{background:#feecef;color:#a52b3a}
   </style>
   <div class="auth-card"><div class="auth-brand">RUTARD · ACCESO</div><h1 id="authTitle">Iniciar sesión</h1><p id="authDescription">Ingresa para abrir tu panel de RutaRD.</p><div id="authContent"></div></div>`;
@@ -52,7 +53,7 @@ function renderForms(mode: 'login' | 'register' = 'login', error = '') {
       <div class="auth-error" id="authError" role="alert">${error}</div>
       <button type="submit">${registering ? 'Crear cuenta' : 'Entrar'}</button>
     </form>
-    ${requiredRole === 'courier' ? `<button class="auth-switch" id="authToggle">${registering ? 'Ya tengo cuenta · Iniciar sesión' : '¿Nuevo mensajero? · Crear cuenta'}</button>` : ''}`;
+    ${requiredRole === 'courier' ? `<button class="auth-switch" id="authToggle">${registering ? 'Ya tengo cuenta · Iniciar sesión' : '¿Nuevo mensajero? · Crear cuenta'}</button><a class="auth-switch" href="/" style="display:block;text-align:center;text-decoration:none">Acceso de administrador</a>` : '<a class="auth-switch" href="/mensajero/" style="display:block;text-align:center;text-decoration:none">¿Eres mensajero? Crear cuenta o iniciar sesión</a>'}`;
 
   content.querySelector<HTMLButtonElement>('#authToggle')?.addEventListener('click', () => renderForms(registering ? 'login' : 'register'));
   content.querySelector<HTMLFormElement>('#authForm')?.addEventListener('submit', async event => {
@@ -157,8 +158,55 @@ function addSessionControls(user: User, profile: Profile) {
   menu.className = 'account-menu';
   menu.id = 'accountMenu';
   menu.hidden = true;
-  menu.innerHTML = `<strong>${escapeText(displayName)}</strong><small>${profile.role === 'admin' ? 'Administrador' : 'Mensajero'} · ${escapeText(user.email || '')}</small><button type="button" id="accountSignOut">Cerrar sesión</button>`;
+  menu.innerHTML = `<strong>${escapeText(displayName)}</strong><small>${profile.role === 'admin' ? 'Administrador' : 'Mensajero'} · ${escapeText(user.email || '')}</small><button type="button" class="account-change-password" id="accountChangePassword">Cambiar contraseña</button><button type="button" id="accountSignOut">Cerrar sesión</button>`;
   host.append(menu);
+
+  const passwordDialog = document.createElement('dialog');
+  passwordDialog.className = 'account-password-dialog';
+  passwordDialog.setAttribute('aria-labelledby', 'accountPasswordTitle');
+  passwordDialog.innerHTML = `<form class="account-password-form" id="accountPasswordForm"><h2 id="accountPasswordTitle">Cambiar contraseña</h2><p>Confirma tu contraseña actual y escribe una nueva de al menos 8 caracteres.</p><label>Contraseña actual<input name="currentPassword" type="password" autocomplete="current-password" required></label><label>Nueva contraseña<input name="newPassword" type="password" autocomplete="new-password" minlength="8" required></label><label>Confirmar nueva contraseña<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></label><div class="account-password-error" id="accountPasswordError" role="alert"></div><div class="account-password-actions"><button type="button" class="account-password-cancel" id="cancelPasswordChange">Cancelar</button><button type="submit" class="account-password-submit">Actualizar contraseña</button></div></form>`;
+  document.body.append(passwordDialog);
+  menu.querySelector<HTMLButtonElement>('#accountChangePassword')?.addEventListener('click', () => {
+    menu.hidden = true;
+    accountButton.setAttribute('aria-expanded', 'false');
+    passwordDialog.showModal();
+  });
+  passwordDialog.querySelector<HTMLButtonElement>('#cancelPasswordChange')?.addEventListener('click', () => passwordDialog.close());
+  passwordDialog.querySelector<HTMLFormElement>('#accountPasswordForm')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget as HTMLFormElement);
+    const currentPassword = String(form.get('currentPassword') || '');
+    const newPassword = String(form.get('newPassword') || '');
+    const confirmPassword = String(form.get('confirmPassword') || '');
+    const error = passwordDialog.querySelector<HTMLElement>('#accountPasswordError')!;
+    const submit = passwordDialog.querySelector<HTMLButtonElement>('.account-password-submit')!;
+    error.textContent = '';
+    if (newPassword !== confirmPassword) {
+      error.textContent = 'Las contraseñas nuevas no coinciden.';
+      return;
+    }
+    if (!user.email) {
+      error.textContent = 'La cuenta no tiene correo para verificar la contraseña actual.';
+      return;
+    }
+    submit.disabled = true;
+    submit.textContent = 'Actualizando…';
+    try {
+      const { error: verifyError } = await supabase!.auth.signInWithPassword({ email: user.email, password: currentPassword });
+      if (verifyError) throw new Error('La contraseña actual no es correcta.');
+      const { error: updateError } = await supabase!.auth.updateUser({ password: newPassword });
+      if (updateError) throw updateError;
+      passwordDialog.close();
+      (passwordDialog.querySelector<HTMLFormElement>('#accountPasswordForm')!).reset();
+      window.alert('Contraseña actualizada correctamente.');
+    } catch (cause) {
+      error.textContent = cause instanceof Error ? cause.message : 'No se pudo cambiar la contraseña.';
+    } finally {
+      submit.disabled = false;
+      submit.textContent = 'Actualizar contraseña';
+    }
+  });
+
   accountButton.addEventListener('click', () => {
     menu.hidden = !menu.hidden;
     accountButton.setAttribute('aria-expanded', String(!menu.hidden));
@@ -170,7 +218,7 @@ function addSessionControls(user: User, profile: Profile) {
     }
   });
   document.addEventListener('keydown', event => {
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' && !passwordDialog.open) {
       menu.hidden = true;
       accountButton.setAttribute('aria-expanded', 'false');
       accountButton.focus();
