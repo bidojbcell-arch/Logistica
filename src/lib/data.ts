@@ -84,6 +84,7 @@ export function fromDatabaseOrder(row: any): OrderRecord {
     phone: row.customer_phone, productId: row.product_id || undefined, product: row.product_name,
     quantity: Number(row.quantity) || 1, unitPrice: Number(row.unit_price) || 0,
     zoneId: row.zone_id || undefined, zone: row.zone_name, deliveryFee: Number(row.delivery_fee) || 0,
-    total: Number(row.total) || 0, courierId: row.courier_id, courier: row.courier_name || 'Sin asignar', status: row.status,
+    total: Number(row.total) || 0, courierId: row.courier_id, courier: row.courier_name || 'Sin asignar',
+    status: row.status === 'En camino' ? 'En ruta' : row.status === 'Llegando' ? 'De camino al cliente' : row.status,
   };
 }
