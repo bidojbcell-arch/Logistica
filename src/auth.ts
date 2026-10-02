@@ -303,7 +303,7 @@ function addCourierApprovals() {
   if (!nav || !main || nav.querySelector('[data-page="courier-approvals"]')) return;
   const navButton = document.createElement('button');
   navButton.dataset.page = 'courier-approvals';
-  navButton.textContent = '✓ Aprobación de mensajeros';
+  navButton.textContent = '♙ Mensajeros';
   navButton.addEventListener('click', () => {
     nav.querySelectorAll('[data-page]').forEach(button => button.classList.remove('active'));
     navButton.classList.add('active');
@@ -317,9 +317,12 @@ function addCourierApprovals() {
   const approvalPage = document.createElement('section');
   approvalPage.className = 'page';
   approvalPage.id = 'courier-approvals';
-  approvalPage.innerHTML = '<div class="heading"><div><h1>Solicitudes de mensajero</h1><p>Aprueba o rechaza las cuentas nuevas antes de darles acceso al panel.</p></div><button class="filter" id="refreshCourierApprovals">↻ Actualizar</button></div><div id="pendingCouriers"><div class="approval-card">Cargando solicitudes…</div></div>';
+  approvalPage.innerHTML = '<div class="heading"><div><h1>Mensajeros</h1><p>Administra sus perfiles, revisa solicitudes y consulta las entregas asignadas.</p></div><button class="filter" id="refreshCourierApprovals">↻ Actualizar</button></div><h2>Solicitudes pendientes</h2><div id="pendingCouriers"><div class="approval-card">Cargando solicitudes…</div></div><h2 style="margin-top:28px">Todos los mensajeros</h2><div id="courierDirectory"><div class="approval-card">Cargando mensajeros…</div></div>';
   main.append(approvalPage);
-  approvalPage.querySelector('#refreshCourierApprovals')?.addEventListener('click', () => void loadPendingCouriers());
+  approvalPage.querySelector('#refreshCourierApprovals')?.addEventListener('click', () => { void loadPendingCouriers(); void loadCourierDirectory(); });
+  void loadPendingCouriers();
+  void loadCourierDirectory();
+
   async function loadPendingCouriers() {
     const target = approvalPage.querySelector<HTMLElement>('#pendingCouriers')!;
     if (!supabase) return;
@@ -336,13 +339,64 @@ function addCourierApprovals() {
     target.querySelectorAll<HTMLButtonElement>('[data-approve]').forEach(button => button.addEventListener('click', () => void decide(button.dataset.approve!, true)));
     target.querySelectorAll<HTMLButtonElement>('[data-reject]').forEach(button => button.addEventListener('click', () => void decide(button.dataset.reject!, false)));
   }
+
+  async function loadCourierDirectory() {
+    const target = approvalPage.querySelector<HTMLElement>('#courierDirectory')!;
+    if (!supabase) return;
+    const [profilesResult, ordersResult] = await Promise.all([
+      supabase.from('profiles').select('id,full_name,phone,approval_status,created_at').eq('role', 'courier').order('created_at', { ascending: false }),
+      supabase.from('orders').select('courier_id,status,zone_name').not('courier_id', 'is', null),
+    ]);
+    if (profilesResult.error || ordersResult.error) {
+      target.textContent = 'No se pudieron cargar los mensajeros: ' + (profilesResult.error || ordersResult.error)!.message;
+      return;
+    }
+    const ordersByCourier = new Map<string, { total: number; active: number; zones: Set<string> }>();
+    for (const order of ordersResult.data || []) {
+      const totals = ordersByCourier.get(order.courier_id) || { total: 0, active: 0, zones: new Set<string>() };
+      totals.total++;
+      if (!['Entregado', 'Cancelado', 'No entregado'].includes(order.status)) totals.active++;
+      if (order.zone_name) totals.zones.add(order.zone_name);
+      ordersByCourier.set(order.courier_id, totals);
+    }
+    if (!profilesResult.data?.length) {
+      target.innerHTML = '<div class="approval-card">Todavía no hay cuentas de mensajero registradas.</div>';
+      return;
+    }
+    target.innerHTML = profilesResult.data.map(profile => {
+      const orders = ordersByCourier.get(profile.id) || { total: 0, active: 0, zones: new Set<string>() };
+      const status = profile.approval_status === 'approved' ? 'Aprobado' : profile.approval_status === 'rejected' ? 'Rechazado' : 'Pendiente';
+      const action = profile.approval_status === 'approved'
+        ? `<button class="reject-btn" data-revoke="${profile.id}">Revocar acceso</button>`
+        : `<button class="approve-btn" data-approve="${profile.id}">Aprobar</button>`;
+      return `<article class="approval-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><h2>${escapeText(profile.full_name || 'Nombre no registrado')}</h2><strong>${status}</strong></div><p>${escapeText(profile.phone || 'Sin teléfono')} · Registrado ${new Date(profile.created_at).toLocaleDateString('es-DO')}</p><p>${orders.total} entregas · ${orders.active} activas · Zonas: ${escapeText([...orders.zones].join(', ') || 'Sin pedidos asignados')}</p><form class="courier-edit-form" data-courier-id="${profile.id}" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0"><label>Nombre<input name="full_name" value="${escapeText(profile.full_name || '')}" required maxlength="100"></label><label>Teléfono / WhatsApp<input name="phone" type="tel" value="${escapeText(profile.phone || '')}" maxlength="30"></label><button class="filter" type="submit">Guardar datos</button></form><div class="approval-actions">${action}${profile.approval_status === 'pending' ? `<button class="reject-btn" data-reject="${profile.id}">Rechazar</button>` : ''}</div></article>`;
+    }).join('');
+
+    target.querySelectorAll<HTMLFormElement>('.courier-edit-form').forEach(form => form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const courierId = form.dataset.courierId!;
+      const values = new FormData(form);
+      const { error } = await supabase!.from('profiles').update({
+        full_name: String(values.get('full_name') || '').trim(),
+        phone: String(values.get('phone') || '').trim(),
+      }).eq('id', courierId);
+      if (error) {
+        window.alert('No se pudieron guardar los datos del mensajero: ' + error.message);
+        return;
+      }
+      await loadCourierDirectory();
+    }));
+    target.querySelectorAll<HTMLButtonElement>('[data-approve]').forEach(button => button.addEventListener('click', () => void decide(button.dataset.approve!, true)));
+    target.querySelectorAll<HTMLButtonElement>('[data-reject], [data-revoke]').forEach(button => button.addEventListener('click', () => void decide(button.dataset.reject || button.dataset.revoke!, false)));
+  }
+
   async function decide(id: string, approve: boolean) {
     const { error } = await supabase!.rpc('approve_courier', { p_courier_id: id, p_approve: approve });
     if (error) {
       window.alert('No se pudo actualizar la cuenta: ' + error.message);
       return;
     }
-    await loadPendingCouriers();
+    await Promise.all([loadPendingCouriers(), loadCourierDirectory()]);
   }
 }
 
