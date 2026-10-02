@@ -12,6 +12,7 @@ type Profile = {
 };
 
 const requiredRole: AppRole = location.pathname.startsWith('/mensajero/') ? 'courier' : 'admin';
+let passwordRecoveryActive = false;
 const shell = document.createElement('section');
 shell.id = 'rutard-auth-gate';
 shell.setAttribute('aria-live', 'polite');
@@ -53,9 +54,11 @@ function renderForms(mode: 'login' | 'register' = 'login', error = '') {
       <div class="auth-error" id="authError" role="alert">${error}</div>
       <button type="submit">${registering ? 'Crear cuenta' : 'Entrar'}</button>
     </form>
+    ${!registering ? '<button class="auth-switch" id="forgotPassword">Olvidé mi contraseña</button>' : ''}
     ${requiredRole === 'courier' ? `<button class="auth-switch" id="authToggle">${registering ? 'Ya tengo cuenta · Iniciar sesión' : '¿Nuevo mensajero? · Crear cuenta'}</button><a class="auth-switch" href="/" style="display:block;text-align:center;text-decoration:none">Acceso de administrador</a>` : '<a class="auth-switch" href="/mensajero/" style="display:block;text-align:center;text-decoration:none">¿Eres mensajero? Crear cuenta o iniciar sesión</a>'}`;
 
   content.querySelector<HTMLButtonElement>('#authToggle')?.addEventListener('click', () => renderForms(registering ? 'login' : 'register'));
+  content.querySelector<HTMLButtonElement>('#forgotPassword')?.addEventListener('click', () => renderPasswordResetRequest());
   content.querySelector<HTMLFormElement>('#authForm')?.addEventListener('submit', async event => {
     event.preventDefault();
     const form = new FormData(event.currentTarget as HTMLFormElement);
@@ -94,7 +97,73 @@ function renderForms(mode: 'login' | 'register' = 'login', error = '') {
   });
 }
 
+function renderPasswordResetRequest(errorMessage = '') {
+  title.textContent = 'Recuperar contraseña';
+  description.textContent = 'Te enviaremos un enlace para establecer una contraseña nueva.';
+  content.innerHTML = `<form class="auth-form" id="resetRequestForm"><label>Correo electrónico<input name="email" type="email" autocomplete="email" required></label><div class="auth-error" id="resetRequestError" role="alert">${escapeText(errorMessage)}</div><button type="submit">Enviar enlace</button></form><button class="auth-switch" id="backToLogin">Volver al inicio de sesión</button>`;
+  content.querySelector<HTMLButtonElement>('#backToLogin')?.addEventListener('click', () => renderForms());
+  content.querySelector<HTMLFormElement>('#resetRequestForm')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget as HTMLFormElement);
+    const email = String(form.get('email') || '').trim().toLowerCase();
+    const submit = content.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    const error = content.querySelector<HTMLElement>('#resetRequestError')!;
+    submit.disabled = true;
+    submit.textContent = 'Enviando…';
+    error.textContent = '';
+    try {
+      if (!supabase) throw new Error('Falta configurar la conexión de Supabase para este sitio.');
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${location.origin}${location.pathname}`,
+      });
+      if (resetError) throw resetError;
+      title.textContent = 'Revisa tu correo';
+      description.textContent = '';
+      content.innerHTML = '<div class="auth-info">Si existe una cuenta con ese correo, recibirás un enlace para crear una contraseña nueva.</div><button class="auth-switch" id="resetBackToLogin">Volver al inicio de sesión</button>';
+      content.querySelector<HTMLButtonElement>('#resetBackToLogin')?.addEventListener('click', () => renderForms());
+    } catch (cause) {
+      error.textContent = cause instanceof Error ? cause.message : 'No se pudo enviar el enlace.';
+      submit.disabled = false;
+      submit.textContent = 'Enviar enlace';
+    }
+  });
+}
+
+function renderPasswordRecovery(errorMessage = '') {
+  title.textContent = 'Crear contraseña nueva';
+  description.textContent = 'Elige una contraseña de al menos 8 caracteres para tu cuenta.';
+  content.innerHTML = `<form class="auth-form" id="recoveryForm"><label>Nueva contraseña<input name="password" type="password" autocomplete="new-password" minlength="8" required></label><label>Confirmar contraseña<input name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required></label><div class="auth-error" id="recoveryError" role="alert">${escapeText(errorMessage)}</div><button type="submit">Guardar contraseña</button></form>`;
+  content.querySelector<HTMLFormElement>('#recoveryForm')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget as HTMLFormElement);
+    const password = String(form.get('password') || '');
+    const confirmPassword = String(form.get('confirmPassword') || '');
+    const submit = content.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    const error = content.querySelector<HTMLElement>('#recoveryError')!;
+    error.textContent = '';
+    if (password !== confirmPassword) {
+      error.textContent = 'Las contraseñas no coinciden.';
+      return;
+    }
+    submit.disabled = true;
+    submit.textContent = 'Guardando…';
+    try {
+      if (!supabase) throw new Error('Falta configurar la conexión de Supabase para este sitio.');
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+      if (updateError) throw updateError;
+      history.replaceState(null, '', location.pathname);
+      passwordRecoveryActive = false;
+      await checkAccess();
+    } catch (cause) {
+      error.textContent = cause instanceof Error ? cause.message : 'No se pudo cambiar la contraseña.';
+      submit.disabled = false;
+      submit.textContent = 'Guardar contraseña';
+    }
+  });
+}
+
 async function checkAccess(user?: User) {
+  if (passwordRecoveryActive) return;
   if (!supabase) {
     renderMessage('La conexión de Supabase no está configurada en este despliegue.');
     return;
@@ -192,9 +261,7 @@ function addSessionControls(user: User, profile: Profile) {
     submit.disabled = true;
     submit.textContent = 'Actualizando…';
     try {
-      const { error: verifyError } = await supabase!.auth.signInWithPassword({ email: user.email, password: currentPassword });
-      if (verifyError) throw new Error('La contraseña actual no es correcta.');
-      const { error: updateError } = await supabase!.auth.updateUser({ password: newPassword });
+      const { error: updateError } = await supabase!.auth.updateUser({ password: newPassword, current_password: currentPassword });
       if (updateError) throw updateError;
       passwordDialog.close();
       (passwordDialog.querySelector<HTMLFormElement>('#accountPasswordForm')!).reset();
@@ -285,6 +352,12 @@ function escapeText(value: unknown) {
 
 if (!supabase) renderMessage('Falta configurar las variables públicas de Supabase.');
 else {
+  supabase.auth.onAuthStateChange(event => {
+    if (event === 'PASSWORD_RECOVERY') {
+      passwordRecoveryActive = true;
+      renderPasswordRecovery();
+    }
+  });
   renderForms();
   void checkAccess();
 }

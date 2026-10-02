@@ -25,7 +25,9 @@
 
 4. Entra al panel de administración en `/`. Las nuevas cuentas creadas desde `/mensajero/` aparecerán en “Aprobación de mensajeros” para que las apruebes o rechaces.
 
-No se configura una contraseña genérica compartida. Al crear la cuenta inicial, el administrador establece su propia contraseña; después puede cambiarla desde el menú **AM → Cambiar contraseña**, confirmando primero su contraseña actual.
+5. En **Authentication → URL Configuration**, agrega a Redirect URLs el origen del sitio desplegado y sus rutas `/` y `/mensajero/`. Los enlaces de confirmación y recuperación regresan al mismo origen donde se solicitaron.
+
+No se configura una contraseña genérica compartida. Al crear la cuenta inicial, el administrador establece su propia contraseña; después puede cambiarla desde el menú **AM → Cambiar contraseña**, confirmando primero su contraseña actual. Si la olvidó, usa **Olvidé mi contraseña** en el formulario para recibir un enlace de recuperación.
 
 La migración restringe pedidos, productos, tarifas y ubicación con RLS. Las cuentas de mensajero solo ven pedidos que se les asignaron después de estar aprobadas. La función de seguimiento público devuelve únicamente campos de seguimiento y requiere un token aleatorio.
 
