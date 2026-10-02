@@ -145,15 +145,41 @@ async function checkAccess(user?: User) {
 }
 
 function addSessionControls(user: User, profile: Profile) {
-  const host = document.querySelector('.actions') || document.querySelector('.top') || document.body;
-  const button = document.createElement('button');
-  button.className = 'auth-top-action';
-  button.textContent = `${profile.full_name || user.email || 'Cuenta'} · Salir`;
-  button.addEventListener('click', async () => {
+  const host = document.querySelector<HTMLElement>('.actions') || document.querySelector<HTMLElement>('.top') || document.body;
+  const accountButton = document.querySelector<HTMLButtonElement>('#accountButton');
+  const displayName = profile.full_name || user.email || 'Cuenta';
+  if (!accountButton) return;
+  accountButton.textContent = displayName.split(/\s+/).slice(0, 2).map(part => part[0]).join('').toUpperCase();
+  accountButton.setAttribute('aria-label', `Cuenta de ${displayName}`);
+  accountButton.title = displayName;
+
+  const menu = document.createElement('div');
+  menu.className = 'account-menu';
+  menu.id = 'accountMenu';
+  menu.hidden = true;
+  menu.innerHTML = `<strong>${escapeText(displayName)}</strong><small>${profile.role === 'admin' ? 'Administrador' : 'Mensajero'} · ${escapeText(user.email || '')}</small><button type="button" id="accountSignOut">Cerrar sesión</button>`;
+  host.append(menu);
+  accountButton.addEventListener('click', () => {
+    menu.hidden = !menu.hidden;
+    accountButton.setAttribute('aria-expanded', String(!menu.hidden));
+  });
+  document.addEventListener('click', event => {
+    if (!menu.hidden && !host.contains(event.target as Node)) {
+      menu.hidden = true;
+      accountButton.setAttribute('aria-expanded', 'false');
+    }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      menu.hidden = true;
+      accountButton.setAttribute('aria-expanded', 'false');
+      accountButton.focus();
+    }
+  });
+  menu.querySelector<HTMLButtonElement>('#accountSignOut')?.addEventListener('click', async () => {
     await supabase?.auth.signOut();
     location.reload();
   });
-  host.append(button);
 }
 
 function addCourierApprovals() {
