@@ -1,6 +1,8 @@
 import { fromDatabaseOrder, fromDatabaseProduct, fromDatabaseZone, persistOrders, persistProducts, persistZones } from './lib/data';
 import { supabase } from './lib/supabase';
 
+let liveCourierNames: string[] = [], selectedLiveCourier = '', adminLocationPollTimer: number | undefined;
+
 const getEl=(id:string):any=>document.getElementById(id);
 const domQuery=(selector:string):any=>document.querySelector(selector);
 const domQueryAll=(selector:string):any[]=>Array.from(document.querySelectorAll(selector));
@@ -134,7 +136,6 @@ const maps=domQueryAll('.map');
 maps.forEach((map,index)=>{
   if(index>0)setRouteMap(map,courierRoutes[0]);
 });
-let liveCourierNames=[],selectedLiveCourier='',adminLocationPollTimer;
 function orderLocation(order){const address=String(order.address||'').trim();if(address&&!/^(direcci[oó]n pendiente|pendiente de confirmar)$/i.test(address))return address;if(order.mapLink){const parsed=parseMapLocation(order.mapLink);if(parsed?.address)return parsed.address;if(parsed?.coordinates)return`${parsed.coordinates.lat}, ${parsed.coordinates.lon}`}return''}
 function renderLiveCouriers(){
   const names=[...new Set(orders.map(order=>String(order.courier||'').trim()).filter(name=>name&&name!=='Sin asignar'))];liveCourierNames=names;
