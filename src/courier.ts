@@ -27,6 +27,8 @@ let locationWatchId: number | undefined;
 let lastLocationWrite = 0;
 let currentCourierId = '';
 const savingStatus = new Set<string>();
+let courierProducts: Array<{ id: string; name: string }> = [];
+let inventoryRealtimeStarted = false;
 
 function escapeHTML(value: unknown) {
   return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
@@ -118,6 +120,55 @@ async function saveCourierStatus(orderId: string) {
     getEl('courierStatus').textContent = remaining ? 'Pedidos asignados' : 'Sin entregas activas';
   }
   renderStops();
+  if (nextStatus === 'Entregado') await loadCourierInventory();
+}
+
+function inventoryStateLabel(status: string) {
+  return status === 'pending' ? 'Pendiente de aprobación' : status === 'approved' ? 'Aprobado' : 'Rechazado';
+}
+
+async function loadCourierInventory() {
+  if (!supabase || !currentCourierId) return;
+  const target = document.getElementById('courierInventory');
+  if (!target) return;
+  const [stockResult, requestResult, deliveryResult, productResult] = await Promise.all([
+    supabase.from('courier_inventory').select('product_id,quantity_assigned,quantity_available,quantity_delivered,updated_at').eq('courier_id', currentCourierId).order('updated_at', { ascending: false }),
+    supabase.from('inventory_requests').select('id,product_id,quantity,status,requested_at').eq('courier_id', currentCourierId).order('requested_at', { ascending: false }).limit(10),
+    supabase.from('inventory_deliveries').select('id,order_id,product_id,quantity,status,delivered_at').eq('courier_id', currentCourierId).order('delivered_at', { ascending: false }).limit(10),
+    supabase.from('products').select('id,name').eq('is_active', true).order('name'),
+  ]);
+  const error = stockResult.error || requestResult.error || deliveryResult.error || productResult.error;
+  if (error) {
+    target.innerHTML = `<div class="notice">No se pudo cargar el inventario: ${escapeHTML(error.message)}</div>`;
+    return;
+  }
+  courierProducts = (productResult.data || []).map(product => ({ id: product.id, name: product.name }));
+  const productName = (id: string) => courierProducts.find(product => product.id === id)?.name || 'Producto del catálogo';
+  const stockRows = stockResult.data || [];
+  const requestRows = requestResult.data || [];
+  const deliveryRows = deliveryResult.data || [];
+  target.innerHTML = `<style>
+    .courier-inventory-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.courier-inventory-block{border:1px solid #e5eaf2;border-radius:11px;padding:14px;min-width:0}.courier-inventory-block h3{margin:0 0 10px;font-size:15px}.inventory-line{padding:10px 0;border-top:1px solid #edf0f5;font-size:13px;line-height:1.5}.inventory-line:first-of-type{border-top:0}.inventory-line small{color:#62718a}.inventory-request-form{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:10px 0 14px}.inventory-request-form label{display:grid;gap:5px;font-size:12px;font-weight:700;color:#62718a}.inventory-request-form select,.inventory-request-form input{max-width:100%;border:1px solid #d6deea;border-radius:8px;background:white;padding:9px;color:#17243a;font:inherit}.inventory-request-form select{min-width:180px}@media(max-width:720px){.courier-inventory-grid{grid-template-columns:1fr}}
+  </style><form class="inventory-request-form" id="inventoryRequestForm"><label>Producto<select name="product_id" required>${courierProducts.map(product => `<option value="${escapeHTML(product.id)}">${escapeHTML(product.name)}</option>`).join('')}</select></label><label>Cantidad<input name="quantity" type="number" min="1" step="1" value="1" required></label><button class="btn primary" type="submit" ${courierProducts.length ? '' : 'disabled'}>Solicitar al administrador</button></form><div class="courier-inventory-grid"><section class="courier-inventory-block"><h3>Existencias asignadas</h3>${stockRows.map(row => `<div class="inventory-line"><strong>${escapeHTML(productName(row.product_id))}</strong><br>Disponible: <b>${row.quantity_available}</b> · Asignado: ${row.quantity_assigned} · Entregado: ${row.quantity_delivered}</div>`).join('') || '<div class="inventory-line">Todavía no tienes productos asignados.</div>'}</section><section class="courier-inventory-block"><h3>Solicitudes y entregas</h3>${requestRows.map(row => `<div class="inventory-line">Solicitud: <strong>${escapeHTML(productName(row.product_id))} × ${row.quantity}</strong><br><small>${inventoryStateLabel(row.status)} · ${new Date(row.requested_at).toLocaleString('es-DO')}</small></div>`).join('')}${deliveryRows.map(row => `<div class="inventory-line">Pedido #${row.order_id}: <strong>${escapeHTML(productName(row.product_id))} × ${row.quantity}</strong><br><small>Entrega ${inventoryStateLabel(row.status).toLocaleLowerCase('es-DO')} · ${new Date(row.delivered_at).toLocaleString('es-DO')}</small></div>`).join('')}${requestRows.length || deliveryRows.length ? '' : '<div class="inventory-line">Aún no tienes solicitudes ni entregas para revisar.</div>'}</section></div>`;
+  target.querySelector<HTMLFormElement>('#inventoryRequestForm')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const form = event.currentTarget as HTMLFormElement;
+    const values = new FormData(form);
+    const productId = String(values.get('product_id') || '');
+    const quantity = Math.floor(Number(values.get('quantity')));
+    if (!courierProducts.some(product => product.id === productId) || quantity < 1) return;
+    const button = form.querySelector<HTMLButtonElement>('button[type="submit"]')!;
+    button.disabled = true;
+    button.textContent = 'Enviando…';
+    const { error: requestError } = await supabase!.from('inventory_requests').insert({ courier_id: currentCourierId, product_id: productId, quantity });
+    if (requestError) {
+      window.alert('No se pudo enviar la solicitud: ' + requestError.message);
+      button.disabled = false;
+      button.textContent = 'Solicitar al administrador';
+      return;
+    }
+    await loadCourierInventory();
+  });
 }
 
 function moveStop(index: number, direction: number) {
@@ -205,6 +256,18 @@ export async function hydrateCourierData() {
 
   saveRoute();
   renderStops();
+  await loadCourierInventory();
+  if (!inventoryRealtimeStarted && supabase) {
+    inventoryRealtimeStarted = true;
+    supabase.channel(`rutard-courier-inventory-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'courier_inventory', filter: `courier_id=eq.${user.id}` }, () => void loadCourierInventory())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_requests', filter: `courier_id=eq.${user.id}` }, () => void loadCourierInventory())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_deliveries', filter: `courier_id=eq.${user.id}` }, () => void loadCourierInventory())
+      .subscribe();
+    window.setInterval(() => {
+      if (!document.hidden) void loadCourierInventory();
+    }, 20000);
+  }
   startLocationBroadcast(user.id);
 }
 

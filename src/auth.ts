@@ -211,7 +211,11 @@ async function checkAccess(user?: User) {
   }
   shell.remove();
   addSessionControls(currentUser, profile);
-  if (profile.role === 'admin') addCourierApprovals();
+  if (profile.role === 'admin') {
+    addCourierApprovals();
+    const { mountAdminInventory } = await import('./inventory-admin');
+    mountAdminInventory();
+  }
 }
 
 function addSessionControls(user: User, profile: Profile) {
