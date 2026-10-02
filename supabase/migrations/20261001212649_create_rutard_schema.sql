@@ -132,6 +132,20 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function private.handle_new_user();
 
+-- Create profiles for accounts that already existed before this migration ran.
+-- The owner-specified first admin is bootstrapped only by this trusted SQL,
+-- never from signup metadata sent by the browser.
+insert into public.profiles (id, full_name, phone, role, approval_status, approved_at)
+select
+  u.id,
+  coalesce(u.raw_user_meta_data ->> 'full_name', ''),
+  coalesce(u.raw_user_meta_data ->> 'phone', ''),
+  case when lower(u.email) = 'bidojbcell@gmail.com' then 'admin' else 'courier' end,
+  case when lower(u.email) = 'bidojbcell@gmail.com' then 'approved' else 'pending' end,
+  case when lower(u.email) = 'bidojbcell@gmail.com' then now() else null end
+from auth.users as u
+on conflict (id) do nothing;
+
 alter table public.profiles enable row level security;
 alter table public.delivery_zones enable row level security;
 alter table public.products enable row level security;
