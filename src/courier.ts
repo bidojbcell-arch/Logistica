@@ -90,12 +90,17 @@ async function saveCourierStatus(orderId: string) {
   if (nextStatus === stop.status) return;
   savingStatus.add(orderId);
   renderStops();
-  const { data, error } = await supabase.from('orders')
-    .update({ status: nextStatus })
+  const saveStatus = (status: string) => supabase!.from('orders')
+    .update({ status })
     .eq('id', Number(orderId))
     .eq('courier_id', currentCourierId)
     .select('id')
     .maybeSingle();
+  let { data, error } = await saveStatus(nextStatus);
+  // Older databases still constrain these two states to their original labels.
+  if (error?.code === '23514' && (nextStatus === 'En ruta' || nextStatus === 'De camino al cliente')) {
+    ({ data, error } = await saveStatus(nextStatus === 'En ruta' ? 'En camino' : 'Llegando'));
+  }
   savingStatus.delete(orderId);
   if (error || !data) {
     console.error('No se pudo actualizar el estado del pedido', error);

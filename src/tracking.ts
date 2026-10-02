@@ -47,10 +47,13 @@ function setMap(address: string, latitude?: number | null, longitude?: number | 
 }
 
 function renderOrder(order: TrackingOrder) {
+  const displayedStatus = order.status === 'En camino' ? 'En ruta'
+    : order.status === 'Llegando' ? 'De camino al cliente'
+      : order.status;
   title.textContent = `Pedido #${order.order_id}`;
   customerLine.textContent = `${order.customer_name} · ${order.address}`;
-  statusMessage.textContent = `Estado: ${order.status}${order.courier_name ? ` · Mensajero: ${order.courier_name}` : ''}${order.product_name ? ` · ${order.product_name} × ${order.quantity}` : ''}`;
-  setTimeline(order.status);
+  statusMessage.textContent = `Estado: ${displayedStatus}${order.courier_name ? ` · Mensajero: ${order.courier_name}` : ''}${order.product_name ? ` · ${order.product_name} × ${order.quantity}` : ''}`;
+  setTimeline(displayedStatus);
   setMap(order.address, order.courier_latitude, order.courier_longitude);
   if (order.courier_phone) {
     whatsappLink.href = `https://wa.me/${order.courier_phone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${order.courier_name || 'mensajero'}, te escribo por el pedido #${order.order_id}.`)}`;
