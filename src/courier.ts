@@ -15,6 +15,9 @@ type CourierStop = {
   location: string;
 };
 
+const courierStatuses = ['Pendiente', 'En ruta', 'De camino al cliente', 'Entregado', 'No entregado'] as const;
+type CourierStatus = typeof courierStatuses[number];
+
 const getEl = (id: string): HTMLElement => document.getElementById(id)!;
 let courierStart: { lat: number; lng: number } | null = null;
 let availableStops: CourierStop[] = [];
@@ -22,6 +25,8 @@ let routeStops: CourierStop[] = [];
 let routeStorageKey = '';
 let locationWatchId: number | undefined;
 let lastLocationWrite = 0;
+let currentCourierId = '';
+const savingStatus = new Set<string>();
 
 function escapeHTML(value: unknown) {
   return String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
@@ -68,10 +73,46 @@ function renderStops() {
       ? `<a class="btn primary" href="https://wa.me/${stop.phone}?text=${trackingMessage}" target="_blank" rel="noopener noreferrer">Enviar seguimiento por WhatsApp</a><a class="btn whatsapp" href="https://wa.me/${stop.phone}?text=${encodeURIComponent(`Hola ${stop.client}, voy hacia tu dirección con el pedido #${stop.id}.`)}" target="_blank" rel="noopener noreferrer">WhatsApp cliente</a><a class="btn" href="tel:+${stop.phone}">Llamar</a>`
       : '<span class="muted">El cliente no tiene teléfono registrado.</span>';
 
-    return `<article class="stop"><div class="stop-head"><b>${index + 1}. ${escapeHTML(stop.client)} · #${escapeHTML(stop.id)}</b><span class="tag">${escapeHTML(stop.status)}</span><button class="btn small" aria-label="Mover ${escapeHTML(stop.client)} hacia arriba" onclick="moveStop(${index},-1)" ${index === 0 ? 'disabled' : ''}>↑</button><button class="btn small" aria-label="Mover ${escapeHTML(stop.client)} hacia abajo" onclick="moveStop(${index},1)" ${index === routeStops.length - 1 ? 'disabled' : ''}>↓</button></div><p><strong>Dirección:</strong> ${escapeHTML(stop.address || stop.location)}<br><strong>Zona:</strong> ${escapeHTML(stop.zone || 'Sin zona registrada')}<br><strong>WhatsApp:</strong> ${escapeHTML(stop.phone || 'No registrado')}<br><strong>Producto:</strong> ${escapeHTML(stop.product)} × ${stop.quantity} · ${money(stop.unitPrice)} c/u<br><strong>Delivery:</strong> ${money(stop.delivery)}</p><div class="actions">${phoneActions}<a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${destination}" target="_blank" rel="noopener noreferrer">Google Maps</a><a class="btn" href="${waze}" target="_blank" rel="noopener noreferrer">Waze</a></div></article>`;
+    const statusOptions = courierStatuses.map(status => `<option value="${status}" ${stop.status === status ? 'selected' : ''}>${status}</option>`).join('');
+    return `<article class="stop"><div class="stop-head"><b>${index + 1}. ${escapeHTML(stop.client)} · #${escapeHTML(stop.id)}</b><span class="tag">${escapeHTML(stop.status)}</span><button class="btn small" aria-label="Mover ${escapeHTML(stop.client)} hacia arriba" onclick="moveStop(${index},-1)" ${index === 0 ? 'disabled' : ''}>↑</button><button class="btn small" aria-label="Mover ${escapeHTML(stop.client)} hacia abajo" onclick="moveStop(${index},1)" ${index === routeStops.length - 1 ? 'disabled' : ''}>↓</button></div><p><strong>Dirección:</strong> ${escapeHTML(stop.address || stop.location)}<br><strong>Zona:</strong> ${escapeHTML(stop.zone || 'Sin zona registrada')}<br><strong>WhatsApp:</strong> ${escapeHTML(stop.phone || 'No registrado')}<br><strong>Producto:</strong> ${escapeHTML(stop.product)} × ${stop.quantity} · ${money(stop.unitPrice)} c/u<br><strong>Delivery:</strong> ${money(stop.delivery)}</p><div class="status-editor"><label for="status-${escapeHTML(stop.id)}">Estado del pedido</label><select id="status-${escapeHTML(stop.id)}" ${savingStatus.has(stop.id) ? 'disabled' : ''}>${statusOptions}</select><button class="btn primary" onclick="saveCourierStatus('${escapeHTML(stop.id)}')" ${savingStatus.has(stop.id) ? 'disabled' : ''}>${savingStatus.has(stop.id) ? 'Guardando…' : 'Guardar estado'}</button></div><div class="actions">${phoneActions}<a class="btn" href="https://www.google.com/maps/dir/?api=1&destination=${destination}" target="_blank" rel="noopener noreferrer">Google Maps</a><a class="btn" href="${waze}" target="_blank" rel="noopener noreferrer">Waze</a></div></article>`;
   }).join('');
 
   drawRoute();
+}
+
+async function saveCourierStatus(orderId: string) {
+  if (!supabase || !currentCourierId || savingStatus.has(orderId)) return;
+  const select = document.getElementById(`status-${orderId}`) as HTMLSelectElement | null;
+  if (!select || !courierStatuses.includes(select.value as CourierStatus)) return;
+  const stop = routeStops.find(item => item.id === orderId);
+  if (!stop) return;
+  const nextStatus = select.value as CourierStatus;
+  if (nextStatus === stop.status) return;
+  savingStatus.add(orderId);
+  renderStops();
+  const { data, error } = await supabase.from('orders')
+    .update({ status: nextStatus })
+    .eq('id', Number(orderId))
+    .eq('courier_id', currentCourierId)
+    .select('id')
+    .maybeSingle();
+  savingStatus.delete(orderId);
+  if (error || !data) {
+    console.error('No se pudo actualizar el estado del pedido', error);
+    window.alert(error?.message || 'No se pudo guardar el estado. Actualiza la página e inténtalo de nuevo.');
+    renderStops();
+    return;
+  }
+  stop.status = nextStatus;
+  if (nextStatus === 'Entregado' || nextStatus === 'No entregado') {
+    availableStops = availableStops.filter(item => item.id !== orderId);
+    routeStops = routeStops.filter(item => item.id !== orderId);
+    saveRoute();
+    const remaining = availableStops.length;
+    getEl('courierSummary').textContent = `${remaining} entrega${remaining === 1 ? '' : 's'} activa${remaining === 1 ? '' : 's'} asignada${remaining === 1 ? '' : 's'} · Santo Domingo`;
+    getEl('courierStatus').textContent = remaining ? 'Pedidos asignados' : 'Sin entregas activas';
+  }
+  renderStops();
 }
 
 function moveStop(index: number, direction: number) {
@@ -116,6 +157,7 @@ export async function hydrateCourierData() {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError) throw userError;
   if (!user) return;
+  currentCourierId = user.id;
 
   const { data, error } = await supabase.from('orders')
     .select('id,tracking_token,customer_name,customer_phone,address,map_link,product_name,quantity,unit_price,delivery_fee,zone_name,status,created_at')
@@ -136,7 +178,7 @@ export async function hydrateCourierData() {
       unitPrice: Number(order.unit_price) || 0,
       delivery: Number(order.delivery_fee) || 0,
       zone: order.zone_name || '',
-      status: order.status || 'Asignado',
+      status: normalizeCourierStatus(order.status),
       location: order.address || order.map_link || '',
     }));
 
@@ -159,6 +201,13 @@ export async function hydrateCourierData() {
   saveRoute();
   renderStops();
   startLocationBroadcast(user.id);
+}
+
+function normalizeCourierStatus(status: string): CourierStatus {
+  if (status === 'En camino') return 'En ruta';
+  if (status === 'Llegando') return 'De camino al cliente';
+  if (status === 'Asignado' || !courierStatuses.includes(status as CourierStatus)) return 'Pendiente';
+  return status as CourierStatus;
 }
 
 function startLocationBroadcast(courierId: string) {
@@ -186,4 +235,4 @@ function startLocationBroadcast(courierId: string) {
 }
 
 renderStops();
-Object.assign(window, { sortNearest, resetRoute, moveStop });
+Object.assign(window, { sortNearest, resetRoute, moveStop, saveCourierStatus });
